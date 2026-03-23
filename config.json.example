@@ -1,0 +1,9 @@
+{
+  "port": 3030,
+  "apiKey": "your-secret-key",
+  "schedulerIntervalMs": 30000,
+  "pushover": {
+    "appToken": "your-pushover-app-token",
+    "userKey": "your-pushover-user-key"
+  }
+}
