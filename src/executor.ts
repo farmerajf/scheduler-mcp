@@ -1,19 +1,8 @@
-import { spawn, execFileSync } from "child_process";
+import { spawn } from "child_process";
 import type Database from "better-sqlite3";
 import type { Config } from "./config.js";
 import type { Task } from "./tools/tasks.js";
 import { sendNotification } from "./pushover.js";
-
-// Resolve the absolute path to claude at startup while PATH is intact.
-// When launchd or similar runs scheduled tasks, PATH may be minimal.
-let claudePath: string;
-try {
-  claudePath = execFileSync("which", ["claude"], { encoding: "utf-8" }).trim();
-  console.log(`[executor] Resolved claude binary: ${claudePath}`);
-} catch {
-  claudePath = "claude";
-  console.warn(`[executor] Could not resolve claude path, falling back to bare "claude"`);
-}
 
 export async function executeTask(
   db: Database.Database,
@@ -21,6 +10,7 @@ export async function executeTask(
   config: Config,
   runId: string
 ): Promise<void> {
+  const claudePath = config.claudePath;
   const args: string[] = [
     "-p",
     task.message,
@@ -29,6 +19,8 @@ export async function executeTask(
     "--max-turns",
     String(task.max_turns),
     "--dangerously-skip-permissions",
+    "--mcp-config",
+    new URL("../mcp-servers.json", import.meta.url).pathname,
   ];
 
   console.log(`[executor] Starting task "${task.name}" (${task.id}), run ${runId}`);

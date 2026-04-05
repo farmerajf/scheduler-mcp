@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "obsidian": {
+      "type": "http",
+      "url": "http://localhost:3030/bb30e37f8d3c43a8a5e4c62f415c2a63ae9952379fb948598bff1e9f9427b33a/mcp"
+    },
+    "apple-events": {
+      "type": "http",
+      "url": "http://localhost:3031/o7458vyo2378y4qbed7pnv8w9t4ocbejnv4w8o3g7uafvcdzbkfrghvb73orq5x2/mcp"
+    },
+    "apple-mail": {
+      "type": "http",
+      "url": "http://localhost:3032/ca8757f1a4bf7375dfc4c111798611a334c536bf9c3127e85746f89dcdd5cbeb/mcp"
+    }
+  }
+}
