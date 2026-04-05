@@ -35,6 +35,26 @@ export class Scheduler {
     console.log(`[scheduler] Stopped (${this.running.size} task(s) still running)`);
   }
 
+  /** Advance next_run_at so the task stops appearing as "due" on subsequent ticks. */
+  private advanceNextRun(task: Task): void {
+    if (task.schedule_type === "recurring") {
+      try {
+        const next = computeNextRun(task.schedule_type, task.schedule);
+        this.db
+          .prepare("UPDATE tasks SET next_run_at = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(next, task.id);
+        console.log(`[scheduler]   Advanced next_run_at to ${next} for "${task.name}"`);
+      } catch (err) {
+        console.error(`[scheduler] Failed to compute next run for "${task.name}" (${task.id}):`, err);
+      }
+    } else {
+      // One-off: clear next_run_at so it can't be picked up again
+      this.db
+        .prepare("UPDATE tasks SET next_run_at = NULL, updated_at = datetime('now') WHERE id = ?")
+        .run(task.id);
+    }
+  }
+
   private tick(): void {
     const now = new Date().toISOString();
 
@@ -50,13 +70,27 @@ export class Scheduler {
     }
 
     for (const task of dueTasks) {
+      // Fast-path: in-memory guard (covers normal operation within a single process)
       if (this.running.has(task.id)) {
-        console.log(`[scheduler]   Skipping "${task.name}" (${task.id}): already running`);
+        console.log(`[scheduler]   Skipping "${task.name}" (${task.id}): already running (in-memory)`);
+        continue;
+      }
+
+      // DB-level guard: check for any existing running run (survives process restarts)
+      const runningRun = this.db
+        .prepare("SELECT id FROM runs WHERE task_id = ? AND status = 'running' LIMIT 1")
+        .get(task.id) as { id: string } | undefined;
+      if (runningRun) {
+        console.log(`[scheduler]   Skipping "${task.name}" (${task.id}): already running in DB (run ${runningRun.id})`);
+        this.advanceNextRun(task);
         continue;
       }
 
       this.running.add(task.id);
       console.log(`[scheduler]   Dispatching "${task.name}" (${task.id}), due at ${task.next_run_at}`);
+
+      // Advance next_run_at BEFORE execution to prevent re-dispatch on restart
+      this.advanceNextRun(task);
 
       // Create run record
       const run = this.db
@@ -78,31 +112,16 @@ export class Scheduler {
         .finally(() => {
           this.running.delete(task.id);
 
-          // Update next_run_at
+          // Update last_run_at on completion
           if (task.schedule_type === "recurring") {
-            try {
-              const next = computeNextRun(
-                task.schedule_type,
-                task.schedule
-              );
-              console.log(`[scheduler] Task "${task.name}" (${task.id}): next run at ${next}`);
-              this.db
-                .prepare(
-                  "UPDATE tasks SET next_run_at = ?, last_run_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
-                )
-                .run(next, task.id);
-            } catch (err) {
-              console.error(
-                `[scheduler] Failed to compute next run for task "${task.name}" (${task.id}):`,
-                err
-              );
-            }
+            this.db
+              .prepare("UPDATE tasks SET last_run_at = datetime('now'), updated_at = datetime('now') WHERE id = ?")
+              .run(task.id);
           } else {
             console.log(`[scheduler] One-off task "${task.name}" (${task.id}) completed, disabling`);
-            // One-off: disable the task
             this.db
               .prepare(
-                "UPDATE tasks SET enabled = 0, last_run_at = datetime('now'), next_run_at = NULL, updated_at = datetime('now') WHERE id = ?"
+                "UPDATE tasks SET enabled = 0, last_run_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"
               )
               .run(task.id);
           }

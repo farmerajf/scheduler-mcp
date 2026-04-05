@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
+import { computeNextRun } from "./tools/tasks.js";
 
 const DB_PATH = resolve("./data/scheduler.db");
 
@@ -52,6 +53,29 @@ export function initDatabase(): Database.Database {
 
   if (orphaned.changes > 0) {
     console.warn(`[db] Marked ${orphaned.changes} orphaned run(s) as failed`);
+
+    // Recompute next_run_at for recurring tasks whose next_run_at is stale (in the past)
+    // This prevents them from being immediately re-dispatched after a restart
+    const staleTasks = db
+      .prepare(
+        `SELECT id, schedule_type, schedule FROM tasks
+         WHERE enabled = 1 AND schedule_type = 'recurring'
+           AND next_run_at IS NOT NULL AND next_run_at <= datetime('now')`
+      )
+      .all() as { id: string; schedule_type: string; schedule: string }[];
+
+    for (const task of staleTasks) {
+      try {
+        const next = computeNextRun(task.schedule_type, task.schedule);
+        if (next) {
+          db.prepare("UPDATE tasks SET next_run_at = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(next, task.id);
+          console.log(`[db] Advanced next_run_at to ${next} for task ${task.id}`);
+        }
+      } catch (err) {
+        console.error(`[db] Failed to recompute next_run_at for task ${task.id}:`, err);
+      }
+    }
   }
   console.log("[db] Database initialized");
 

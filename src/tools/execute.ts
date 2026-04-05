@@ -6,7 +6,7 @@ import type { Task } from "./tasks.js";
 export async function forceExecute(
   db: Database.Database,
   config: Config,
-  params: { id: string }
+  params: { id: string; allow_concurrent?: boolean }
 ) {
   const task = db
     .prepare("SELECT * FROM tasks WHERE id = ?")
@@ -19,6 +19,24 @@ export async function forceExecute(
       ],
       isError: true,
     };
+  }
+
+  // Check for already-running instances unless explicitly allowed
+  if (!params.allow_concurrent) {
+    const runningRun = db
+      .prepare("SELECT id FROM runs WHERE task_id = ? AND status = 'running' LIMIT 1")
+      .get(task.id) as { id: string } | undefined;
+    if (runningRun) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: Task "${task.name}" is already running (run ${runningRun.id}). Use allow_concurrent: true to override.`,
+          },
+        ],
+        isError: true,
+      };
+    }
   }
 
   // Create run record and start execution asynchronously

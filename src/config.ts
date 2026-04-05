@@ -14,6 +14,7 @@ export interface Config {
   apiKey: string;
   tokenBucketMs: number;
   schedulerIntervalMs: number;
+  claudePath: string;
   pushover?: PushoverConfig;
 }
 
@@ -59,6 +60,7 @@ export function loadConfig(configPath?: string): Config {
 
   config.schedulerIntervalMs = config.schedulerIntervalMs || 30000;
   config.tokenBucketMs = config.tokenBucketMs || 3600000;
+  config.claudePath = config.claudePath || "claude";
 
   // Validate pushover config if provided
   if (config.pushover) {

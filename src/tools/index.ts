@@ -177,6 +177,10 @@ export function registerTools(
     "Immediately execute a task regardless of its schedule. The task runs asynchronously — use get_run to check the result.",
     {
       id: z.string().describe("Task ID to execute immediately"),
+      allow_concurrent: z
+        .boolean()
+        .default(false)
+        .describe("Allow execution even if the task is already running"),
     },
     async (params) => {
       try {
